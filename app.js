@@ -1,11 +1,11 @@
 // Kanto Pokédex — data-fetching layer
-// Fetches Pokémon #1-150 (detail + species + evolution chain) from PokeAPI,
+// Fetches Pokémon #1-151 (detail + species + evolution chain) from PokeAPI,
 // flattens each into one plain object, and caches the whole set in
 // localStorage so we never hit the network again after first load.
 
 const API_BASE = 'https://pokeapi.co/api/v2';
-const POKEMON_COUNT = 150;
-const CACHE_KEY = 'pokedex-data-v2';
+const POKEMON_COUNT = 151;
+const CACHE_KEY = 'pokedex-data-v3';
 const FETCH_CHUNK_SIZE = 10; // how many Pokémon to fetch in parallel per batch
 
 // Version groups in release order, oldest to newest. Used to pick the most
