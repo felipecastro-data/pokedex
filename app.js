@@ -1,11 +1,15 @@
 // Kanto Pokédex — data-fetching layer
-// Fetches Pokémon #1-151 (detail + species + evolution chain) from PokeAPI,
-// flattens each into one plain object, and caches the whole set in
-// localStorage so we never hit the network again after first load.
+// Lazy-loading: on first visit, fetch a lightweight record (id, name,
+// artwork, types) for all 151 Pokémon — enough for the grid, search, and
+// type filter — and cache that list in localStorage. Full detail (stats,
+// abilities, moves, evolution chain) is only fetched when a Pokémon's
+// detail view is opened, then cached per-id so revisits are instant.
 
 const API_BASE = 'https://pokeapi.co/api/v2';
 const POKEMON_COUNT = 151;
-const CACHE_KEY = 'pokedex-data-v3';
+const LIST_CACHE_KEY = 'pokedex-list-v1';
+const DETAIL_CACHE_PREFIX = 'pokedex-detail-v1-';
+const LEGACY_CACHE_KEY = 'pokedex-data-v3'; // old monolithic cache, no longer used
 const FETCH_CHUNK_SIZE = 10; // how many Pokémon to fetch in parallel per batch
 
 // Version groups in release order, oldest to newest. Used to pick the most
@@ -21,7 +25,11 @@ const VERSION_GROUP_ORDER = [
 ];
 
 const state = {
-  pokemon: [], // filled in once loading finishes
+  pokemonList: [], // lightweight records for all 151, filled in once loading finishes
+  detailCache: new Map(), // id -> full detail object, populated lazily per visit
+  evolutionChainCache: new Map(), // chain URL -> in-flight/resolved parsed chain
+  activeTypeFilter: null,
+  currentDetailId: null,
 };
 
 document.addEventListener('DOMContentLoaded', init);
@@ -35,25 +43,30 @@ if ('serviceWorker' in navigator) {
 }
 
 async function init() {
+  localStorage.removeItem(LEGACY_CACHE_KEY);
+
   setupSearch();
+  setupTypeFilter();
   setupNavigation();
 
-  const cached = loadFromCache();
+  const cached = loadListFromCache();
   if (cached) {
-    state.pokemon = cached;
+    state.pokemonList = cached;
     console.log(`Loaded ${cached.length} Pokémon from cache`);
-    renderGrid(state.pokemon);
+    renderTypeChips();
+    renderGrid(currentFilteredList());
     return;
   }
 
   showLoading('Loading Pokédex...');
   try {
-    const pokemon = await fetchAllPokemon();
-    state.pokemon = pokemon;
-    saveToCache(pokemon);
+    const list = await fetchAllLightweight();
+    state.pokemonList = list;
+    saveListToCache(list);
     hideLoading();
-    renderGrid(state.pokemon);
-    console.log(`Fetched and cached ${pokemon.length} Pokémon`);
+    renderTypeChips();
+    renderGrid(currentFilteredList());
+    console.log(`Fetched and cached ${list.length} Pokémon`);
   } catch (err) {
     console.error('Failed to load Pokédex data', err);
     showLoading('Failed to load data. Check your connection and reload.');
@@ -62,31 +75,48 @@ async function init() {
 
 // ---- Cache ----
 
-function loadFromCache() {
+function loadListFromCache() {
   try {
-    const raw = localStorage.getItem(CACHE_KEY);
+    const raw = localStorage.getItem(LIST_CACHE_KEY);
     if (!raw) return null;
     const data = JSON.parse(raw);
     if (!Array.isArray(data) || data.length !== POKEMON_COUNT) return null;
     return data;
   } catch (err) {
-    console.warn('Could not read Pokédex cache, will re-fetch', err);
+    console.warn('Could not read Pokédex list cache, will re-fetch', err);
     return null;
   }
 }
 
-function saveToCache(pokemon) {
+function saveListToCache(list) {
   try {
-    localStorage.setItem(CACHE_KEY, JSON.stringify(pokemon));
+    localStorage.setItem(LIST_CACHE_KEY, JSON.stringify(list));
   } catch (err) {
-    console.warn('Could not write Pokédex cache (localStorage full?)', err);
+    console.warn('Could not write Pokédex list cache (localStorage full?)', err);
   }
 }
 
-// ---- Fetching ----
+function loadDetailFromCache(id) {
+  try {
+    const raw = localStorage.getItem(DETAIL_CACHE_PREFIX + id);
+    return raw ? JSON.parse(raw) : null;
+  } catch (err) {
+    console.warn(`Could not read cached detail for #${id}, will re-fetch`, err);
+    return null;
+  }
+}
 
-async function fetchAllPokemon() {
-  const evolutionChainCache = new Map(); // chain URL -> in-flight/resolved parsed chain
+function saveDetailToCache(id, detail) {
+  try {
+    localStorage.setItem(DETAIL_CACHE_PREFIX + id, JSON.stringify(detail));
+  } catch (err) {
+    console.warn('Could not write Pokémon detail cache (localStorage full?)', err);
+  }
+}
+
+// ---- Fetching: lightweight list (grid/search/filter) ----
+
+async function fetchAllLightweight() {
   const results = [];
 
   for (let start = 1; start <= POKEMON_COUNT; start += FETCH_CHUNK_SIZE) {
@@ -95,7 +125,7 @@ async function fetchAllPokemon() {
       ids.push(id);
     }
 
-    const chunk = await Promise.all(ids.map((id) => fetchPokemon(id, evolutionChainCache)));
+    const chunk = await Promise.all(ids.map(fetchLightweightPokemon));
     results.push(...chunk);
     showLoading(`Loading Pokédex... ${results.length}/${POKEMON_COUNT}`);
   }
@@ -103,26 +133,37 @@ async function fetchAllPokemon() {
   return results;
 }
 
-async function fetchPokemon(id, evolutionChainCache) {
+async function fetchLightweightPokemon(id) {
+  const detail = await fetchJson(`${API_BASE}/pokemon/${id}`);
+  return {
+    id: detail.id,
+    name: detail.name,
+    artwork: detail.sprites.other?.['official-artwork']?.front_default ?? detail.sprites.front_default,
+    types: detail.types.map((t) => t.type.name),
+  };
+}
+
+// ---- Fetching: full detail (single Pokémon, on demand) ----
+
+async function fetchFullDetail(id) {
   const [detail, species] = await Promise.all([
     fetchJson(`${API_BASE}/pokemon/${id}`),
     fetchJson(`${API_BASE}/pokemon-species/${id}`),
   ]);
 
   // Several Pokémon share the same evolution chain (e.g. Pidgey/Pidgeotto/Pidgeot).
-  // Cache by chain URL so it's only fetched once per chain, not once per Pokémon.
+  // Cache by chain URL so it's only fetched once per chain per session.
   const chainUrl = species.evolution_chain.url;
-  if (!evolutionChainCache.has(chainUrl)) {
-    evolutionChainCache.set(chainUrl, fetchJson(chainUrl).then(parseEvolutionChain));
+  if (!state.evolutionChainCache.has(chainUrl)) {
+    state.evolutionChainCache.set(chainUrl, fetchJson(chainUrl).then(parseEvolutionChain));
   }
-  const evolutionChain = await evolutionChainCache.get(chainUrl);
+  const evolutionChain = await state.evolutionChainCache.get(chainUrl);
 
   const flavorEntry = species.flavor_text_entries.find((e) => e.language.name === 'en');
 
   return {
     id: detail.id,
     name: detail.name,
-    sprite: detail.sprites.front_default,
     artwork: detail.sprites.other?.['official-artwork']?.front_default ?? detail.sprites.front_default,
     types: detail.types.map((t) => t.type.name),
     height: detail.height,
@@ -227,7 +268,7 @@ function cardHTML(p) {
 
   return `
     <div class="card" data-id="${p.id}">
-      <img class="card-sprite" src="${p.sprite}" alt="${p.name}" loading="lazy" width="96" height="96">
+      <img class="card-sprite" src="${p.artwork}" alt="${p.name}" loading="lazy" width="96" height="96">
       <div class="card-number">#${number}</div>
       <div class="card-name">${capitalize(p.name)}</div>
       <div class="card-types">${badges}</div>
@@ -239,23 +280,70 @@ function capitalize(s) {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-// ---- Search ----
+// ---- Search + type filter ----
 
 function setupSearch() {
   const input = document.getElementById('search-input');
   if (!input) return;
   input.addEventListener('input', () => {
-    renderGrid(filterPokemon(input.value));
+    renderGrid(currentFilteredList());
   });
 }
 
-function filterPokemon(query) {
-  const q = query.trim().toLowerCase().replace(/^#/, '');
-  if (!q) return state.pokemon;
+function setupTypeFilter() {
+  const row = document.getElementById('type-filter-row');
+  if (!row) return;
+  row.addEventListener('click', (e) => {
+    const chip = e.target.closest('.type-chip');
+    if (!chip) return;
 
-  return state.pokemon.filter((p) => {
+    const type = chip.dataset.type;
+    state.activeTypeFilter = state.activeTypeFilter === type ? null : type;
+    renderTypeChips();
+    renderGrid(currentFilteredList());
+  });
+}
+
+function renderTypeChips() {
+  const row = document.getElementById('type-filter-row');
+  if (!row) return;
+
+  row.innerHTML = uniqueTypesInOrder(state.pokemonList)
+    .map((t) => {
+      const active = state.activeTypeFilter === t ? ' active' : '';
+      return `<button class="type-chip type-${t}${active}" data-type="${t}">${t}</button>`;
+    })
+    .join('');
+}
+
+// Types in first-seen order (Pokédex #1-151 doesn't cover every type).
+function uniqueTypesInOrder(list) {
+  const seen = new Set();
+  const order = [];
+  list.forEach((p) => {
+    p.types.forEach((t) => {
+      if (!seen.has(t)) {
+        seen.add(t);
+        order.push(t);
+      }
+    });
+  });
+  return order;
+}
+
+function currentFilteredList() {
+  const input = document.getElementById('search-input');
+  return filterPokemon(input ? input.value : '', state.activeTypeFilter);
+}
+
+function filterPokemon(query, typeFilter) {
+  const q = query.trim().toLowerCase().replace(/^#/, '');
+
+  return state.pokemonList.filter((p) => {
     const number = String(p.id).padStart(3, '0');
-    return p.name.includes(q) || number.includes(q) || String(p.id) === q;
+    const matchesQuery = !q || p.name.includes(q) || number.includes(q) || String(p.id) === q;
+    const matchesType = !typeFilter || p.types.includes(typeFilter);
+    return matchesQuery && matchesType;
   });
 }
 
@@ -287,14 +375,32 @@ function setupNavigation() {
 }
 
 function openDetail(id) {
-  const pokemon = state.pokemon.find((p) => p.id === id);
-  if (!pokemon) return;
+  const lightweight = state.pokemonList.find((p) => p.id === id);
+  if (!lightweight) return;
 
   state.currentDetailId = id;
-  renderDetail(pokemon);
   document.getElementById('list-view').hidden = true;
   document.getElementById('detail-view').hidden = false;
   window.scrollTo(0, 0);
+
+  const cached = state.detailCache.get(id) ?? loadDetailFromCache(id);
+  if (cached) {
+    state.detailCache.set(id, cached);
+    renderDetail(cached);
+    return;
+  }
+
+  renderDetailSkeleton(lightweight);
+  fetchFullDetail(id)
+    .then((full) => {
+      state.detailCache.set(id, full);
+      saveDetailToCache(id, full);
+      if (state.currentDetailId === id) renderDetail(full);
+    })
+    .catch((err) => {
+      console.error(`Failed to load detail for #${id}`, err);
+      if (state.currentDetailId === id) renderDetailError(lightweight);
+    });
 }
 
 function closeDetail() {
@@ -315,12 +421,12 @@ const STAT_LABELS = {
 
 const STAT_MAX = 200; // reference scale for bar width, not the true max (Blissey HP is 255)
 
-function renderDetail(p) {
+function detailHeaderHTML(p) {
   const number = String(p.id).padStart(3, '0');
   const primaryType = p.types[0];
   const badges = p.types.map((t) => `<span class="type-badge type-${t}">${t}</span>`).join('');
 
-  document.getElementById('detail-view').innerHTML = `
+  return `
     <div class="detail-header type-bg-${primaryType}">
       <button id="back-button" class="icon-button" aria-label="Back to list">&larr;</button>
       <img class="detail-artwork" src="${p.artwork}" alt="${p.name}">
@@ -330,6 +436,12 @@ function renderDetail(p) {
       </div>
       <div class="detail-badges">${badges}</div>
     </div>
+  `;
+}
+
+function renderDetail(p) {
+  document.getElementById('detail-view').innerHTML = `
+    ${detailHeaderHTML(p)}
     <div class="detail-body">
       <section class="detail-section">
         <h3 class="section-title">Types</h3>
@@ -351,6 +463,24 @@ function renderDetail(p) {
         <h3 class="section-title">Moves</h3>
         ${movesPanelHTML(p)}
       </section>
+    </div>
+  `;
+}
+
+function renderDetailSkeleton(p) {
+  document.getElementById('detail-view').innerHTML = `
+    ${detailHeaderHTML(p)}
+    <div class="detail-body">
+      <p class="detail-loading">Loading details…</p>
+    </div>
+  `;
+}
+
+function renderDetailError(p) {
+  document.getElementById('detail-view').innerHTML = `
+    ${detailHeaderHTML(p)}
+    <div class="detail-body">
+      <p class="detail-loading">Failed to load details. Check your connection and try again.</p>
     </div>
   `;
 }
@@ -413,9 +543,9 @@ function evolutionStageHTML(stage, index, currentId) {
   `;
 
   // Some chains (e.g. Eevee) branch into later-generation Pokémon outside
-  // the Kanto dataset — those aren't in state.pokemon and aren't clickable,
-  // but the sprite CDN URL is predictable from the id regardless.
-  const inDex = state.pokemon.some((p) => p.id === stage.id);
+  // the Kanto dataset — those aren't in state.pokemonList and aren't
+  // clickable, but the sprite CDN URL is predictable from the id regardless.
+  const inDex = state.pokemonList.some((p) => p.id === stage.id);
   const sprite = `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${stage.id}.png`;
   const number = String(stage.id).padStart(3, '0');
   const current = stage.id === currentId ? ' current' : '';

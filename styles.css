@@ -51,6 +51,39 @@ body {
   display: none;
 }
 
+/* ---- Type filter chips ---- */
+.type-filter-row {
+  display: flex;
+  gap: 0.5rem;
+  overflow-x: auto;
+  padding-bottom: 0.6rem;
+  margin-bottom: 0.75rem;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.type-filter-row::-webkit-scrollbar {
+  display: none;
+}
+
+.type-chip {
+  flex-shrink: 0;
+  border: none;
+  padding: 0.35rem 0.85rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: capitalize;
+  color: #fff;
+  opacity: 0.45;
+  cursor: pointer;
+}
+
+.type-chip.active {
+  opacity: 1;
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.15);
+}
+
 /* ---- Search bar ---- */
 #search-input {
   width: 100%;
@@ -230,6 +263,12 @@ body {
 
 .detail-body {
   padding: 0.75rem 1rem 2rem;
+}
+
+.detail-loading {
+  padding: 2rem 1rem;
+  text-align: center;
+  color: #666;
 }
 
 /* ---- Stacked sections ---- */

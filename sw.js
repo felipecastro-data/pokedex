@@ -5,7 +5,7 @@
 // Paths are relative ("./...") so this works when hosted at a subpath
 // (e.g. github.io/pokedex/), not just at a domain root.
 
-const CACHE_VERSION = 'v3';
+const CACHE_VERSION = 'v4';
 const STATIC_CACHE = `pokedex-static-${CACHE_VERSION}`;
 const RUNTIME_CACHE = `pokedex-runtime-${CACHE_VERSION}`;
 

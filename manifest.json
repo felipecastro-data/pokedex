@@ -1,5 +1,5 @@
 {
-  "name": "Kanto Pokédex",
+  "name": "Pokédex",
   "short_name": "Pokédex",
   "start_url": "./index.html",
   "scope": "./",
