@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Kanto Pokédex</title>
+
+  <!-- PWA / iPhone home screen support -->
+  <meta name="theme-color" content="#dc0a2d">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Pokédex">
+  <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
+  <link rel="manifest" href="./manifest.json">
+
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+
+  <!-- List view: grid of Pokémon cards + search -->
+  <main id="list-view">
+    <header id="list-header">
+      <h1>Kanto Pokédex</h1>
+      <input
+        type="search"
+        id="search-input"
+        placeholder="Search by name or number"
+        inputmode="search"
+        autocomplete="off"
+        autocorrect="off"
+        autocapitalize="off"
+      >
+    </header>
+    <p id="loading" hidden></p>
+    <p id="no-results" hidden>No Pokémon found.</p>
+    <div id="pokemon-grid"></div>
+  </main>
+
+  <!-- Detail view: single Pokémon, hidden until selected -->
+  <main id="detail-view" hidden>
+  </main>
+
+  <script src="./app.js"></script>
+</body>
+</html>
