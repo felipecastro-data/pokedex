@@ -5,8 +5,20 @@
 
 const API_BASE = 'https://pokeapi.co/api/v2';
 const POKEMON_COUNT = 150;
-const CACHE_KEY = 'pokedex-data-v1';
+const CACHE_KEY = 'pokedex-data-v2';
 const FETCH_CHUNK_SIZE = 10; // how many Pokémon to fetch in parallel per batch
+
+// Version groups in release order, oldest to newest. Used to pick the most
+// recent game's level-up movepool when a Pokémon's moves span many games.
+const VERSION_GROUP_ORDER = [
+  'red-blue', 'yellow', 'gold-silver', 'crystal', 'ruby-sapphire', 'emerald',
+  'firered-leafgreen', 'diamond-pearl', 'platinum', 'heartgold-soulsilver',
+  'black-white', 'colosseum', 'xd', 'black-2-white-2', 'x-y',
+  'omega-ruby-alpha-sapphire', 'sun-moon', 'ultra-sun-ultra-moon',
+  'lets-go-pikachu-lets-go-eevee', 'sword-shield', 'the-isle-of-armor',
+  'the-crown-tundra', 'brilliant-diamond-and-shining-pearl', 'legends-arceus',
+  'scarlet-violet', 'the-teal-mask', 'the-indigo-disk',
+];
 
 const state = {
   pokemon: [], // filled in once loading finishes
@@ -118,7 +130,40 @@ async function fetchPokemon(id, evolutionChainCache) {
     stats: detail.stats.map((s) => ({ name: s.stat.name, value: s.base_stat })),
     flavorText: flavorEntry ? flavorEntry.flavor_text.replace(/[\n\f\r]/g, ' ') : '',
     evolutionChain,
+    abilities: detail.abilities.map((a) => ({ name: a.ability.name, isHidden: a.is_hidden })),
+    levelUpMoves: extractLevelUpMoves(detail.moves),
   };
+}
+
+// Picks the most recent version group with level-up move data (movepools
+// can differ between games) and returns its moves sorted by level.
+function extractLevelUpMoves(movesRaw) {
+  let bestGroup = null;
+  let bestIndex = -1;
+
+  movesRaw.forEach((m) => {
+    m.version_group_details.forEach((vgd) => {
+      if (vgd.move_learn_method.name !== 'level-up') return;
+      const idx = VERSION_GROUP_ORDER.indexOf(vgd.version_group.name);
+      if (idx > bestIndex) {
+        bestIndex = idx;
+        bestGroup = vgd.version_group.name;
+      }
+    });
+  });
+
+  if (!bestGroup) return [];
+
+  const moves = [];
+  movesRaw.forEach((m) => {
+    const entry = m.version_group_details.find(
+      (vgd) => vgd.move_learn_method.name === 'level-up' && vgd.version_group.name === bestGroup
+    );
+    if (entry) moves.push({ name: m.move.name, level: entry.level_learned_at });
+  });
+
+  moves.sort((a, b) => a.level - b.level);
+  return moves;
 }
 
 // Flattens the (possibly branching) evolution-chain tree into an ordered list.
@@ -224,18 +269,12 @@ function setupNavigation() {
     if (card) openDetail(Number(card.dataset.id));
   });
 
-  // Back button, tab switches, and evolution-card taps all live inside
-  // #detail-view, which is rebuilt on every openDetail() call, so this
-  // listener is delegated too instead of being re-attached each time.
+  // Back button and evolution-card taps both live inside #detail-view,
+  // which is rebuilt on every openDetail() call, so this listener is
+  // delegated too instead of being re-attached each time.
   document.getElementById('detail-view').addEventListener('click', (e) => {
     if (e.target.closest('#back-button')) {
       closeDetail();
-      return;
-    }
-
-    const tabButton = e.target.closest('.tab-button');
-    if (tabButton) {
-      switchTab(tabButton.dataset.tab);
       return;
     }
 
@@ -292,16 +331,26 @@ function renderDetail(p) {
       <div class="detail-badges">${badges}</div>
     </div>
     <div class="detail-body">
-      <nav class="tab-bar">
-        <button class="tab-button active" data-tab="stats">Stats</button>
-        <button class="tab-button" data-tab="types">Types</button>
-        <button class="tab-button" data-tab="evolution">Evolution</button>
-      </nav>
-      <div class="tab-panels">
-        <section class="tab-panel active" data-panel="stats">${statsPanelHTML(p)}</section>
-        <section class="tab-panel" data-panel="types">${typesPanelHTML(p)}</section>
-        <section class="tab-panel" data-panel="evolution">${evolutionPanelHTML(p)}</section>
-      </div>
+      <section class="detail-section">
+        <h3 class="section-title">Types</h3>
+        ${typesPanelHTML(p)}
+      </section>
+      <section class="detail-section">
+        <h3 class="section-title">Stats</h3>
+        ${statsPanelHTML(p)}
+      </section>
+      <section class="detail-section">
+        <h3 class="section-title">Evolution</h3>
+        ${evolutionPanelHTML(p)}
+      </section>
+      <section class="detail-section">
+        <h3 class="section-title">Abilities</h3>
+        ${abilitiesPanelHTML(p)}
+      </section>
+      <section class="detail-section">
+        <h3 class="section-title">Moves</h3>
+        ${movesPanelHTML(p)}
+      </section>
     </div>
   `;
 }
@@ -384,6 +433,44 @@ function evolutionStageHTML(stage, index, currentId) {
   `;
 }
 
+function abilitiesPanelHTML(p) {
+  const rows = p.abilities
+    .map((a) => {
+      const name = capitalize(a.name.replace(/-/g, ' '));
+      const hiddenTag = a.isHidden ? '<span class="hidden-tag">Hidden</span>' : '';
+      return `
+        <div class="ability-row">
+          <span class="ability-name">${name}</span>
+          ${hiddenTag}
+        </div>
+      `;
+    })
+    .join('');
+
+  return `<div class="ability-list">${rows}</div>`;
+}
+
+function movesPanelHTML(p) {
+  const moves = p.levelUpMoves;
+  if (!moves || moves.length === 0) {
+    return `<p class="moves-empty">No level-up moves recorded.</p>`;
+  }
+
+  const rows = moves
+    .map((m) => {
+      const name = capitalize(m.name.replace(/-/g, ' '));
+      return `
+        <div class="move-row">
+          <span class="move-level">Lv ${m.level}</span>
+          <span class="move-name">${name}</span>
+        </div>
+      `;
+    })
+    .join('');
+
+  return `<div class="move-list">${rows}</div>`;
+}
+
 function evolutionConditionText(stage) {
   if (stage.trigger === 'level-up') {
     return stage.minLevel ? `Level ${stage.minLevel}` : 'Level up';
@@ -392,13 +479,4 @@ function evolutionConditionText(stage) {
   if (stage.trigger === 'use-item') return 'Use item';
   if (stage.trigger) return capitalize(stage.trigger.replace(/-/g, ' '));
   return 'Evolves';
-}
-
-function switchTab(tab) {
-  document.querySelectorAll('.tab-button').forEach((btn) => {
-    btn.classList.toggle('active', btn.dataset.tab === tab);
-  });
-  document.querySelectorAll('.tab-panel').forEach((panel) => {
-    panel.classList.toggle('active', panel.dataset.panel === tab);
-  });
 }

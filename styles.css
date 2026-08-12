@@ -229,39 +229,27 @@ body {
 }
 
 .detail-body {
-  padding: 1.25rem 1rem 2rem;
+  padding: 0.75rem 1rem 2rem;
 }
 
-/* ---- Tabs ---- */
-.tab-bar {
-  display: flex;
-  gap: 1.25rem;
-  border-bottom: 1px solid #e5e5e5;
-  margin-bottom: 1.25rem;
+/* ---- Stacked sections ---- */
+.detail-section {
+  padding-top: 1.25rem;
 }
 
-.tab-button {
-  border: none;
-  background: none;
-  padding: 0.5rem 0.1rem;
-  font-size: 0.95rem;
-  font-weight: 600;
-  color: #999;
-  cursor: pointer;
-  border-bottom: 2px solid transparent;
+.detail-section:first-child {
+  padding-top: 0;
 }
 
-.tab-button.active {
+.detail-section + .detail-section {
+  border-top: 1px solid #eee;
+}
+
+.section-title {
+  font-size: 1rem;
+  font-weight: 700;
   color: #222;
-  border-bottom-color: #dc0a2d;
-}
-
-.tab-panel {
-  display: none;
-}
-
-.tab-panel.active {
-  display: block;
+  margin-bottom: 0.75rem;
 }
 
 /* ---- Stats panel ---- */
@@ -386,4 +374,65 @@ body {
 .evolution-arrow {
   font-size: 1.1rem;
   color: #dc0a2d;
+}
+
+/* ---- Abilities panel ---- */
+.ability-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.ability-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.ability-name {
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.hidden-tag {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #666;
+  background: #eee;
+  border-radius: 999px;
+  padding: 0.15rem 0.55rem;
+}
+
+/* ---- Moves panel ---- */
+.moves-empty {
+  color: #666;
+}
+
+.move-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.move-row {
+  display: grid;
+  grid-template-columns: 3.5rem 1fr;
+  gap: 0.6rem;
+  font-size: 0.85rem;
+  padding-bottom: 0.45rem;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.move-row:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.move-level {
+  color: #999;
+  font-weight: 600;
+}
+
+.move-name {
+  font-weight: 500;
 }
