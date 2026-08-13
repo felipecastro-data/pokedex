@@ -1,19 +1,19 @@
 # Pokedex PWA
 
 ## Goal
-Single-page PWA (HTML/CSS/JS, no framework) — Kanto Pokédex (#1-151,
-including Mew), optimized for iPhone Safari, installable to home
-screen, offline-capable.
+Single-page PWA (HTML/CSS/JS, no framework) — Kanto + Johto Pokédex
+(#1-251), optimized for iPhone Safari, installable to home screen,
+offline-capable.
 
 ## Data source
 PokeAPI (https://pokeapi.co) — no API key needed.
-- List: GET /api/v2/pokemon?limit=151
+- List: GET /api/v2/pokemon?limit=251
 - Detail: GET /api/v2/pokemon/{id}
 - Species/flavor text: GET /api/v2/pokemon-species/{id}
 - Evolution chain: GET /api/v2/evolution-chain/{id} (id from species response)
 
 ## Screens
-1. List view — grid/list of 151 cards (sprite, name, #, type badges),
+1. List view — grid/list of 251 cards (sprite, name, #, type badges),
    search by name/number. Reference: attached mockups.
 2. Detail view — back button, artwork, tabs or sections for
    Stats / Types / Evolutions. Show evolution chain as connected cards

@@ -1,11 +1,11 @@
-// Kanto Pokédex — service worker
+// Pokédex — service worker
 // Precaches the app shell so the PWA loads offline, and opportunistically
 // caches everything else it fetches (PokeAPI JSON, sprite images) so a
 // Pokémon you've already viewed stays viewable without a connection.
 // Paths are relative ("./...") so this works when hosted at a subpath
 // (e.g. github.io/pokedex/), not just at a domain root.
 
-const CACHE_VERSION = 'v4';
+const CACHE_VERSION = 'v5';
 const STATIC_CACHE = `pokedex-static-${CACHE_VERSION}`;
 const RUNTIME_CACHE = `pokedex-runtime-${CACHE_VERSION}`;
 

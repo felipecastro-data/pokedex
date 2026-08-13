@@ -1,12 +1,12 @@
-// Kanto Pokédex — data-fetching layer
+// Pokédex — data-fetching layer
 // Lazy-loading: on first visit, fetch a lightweight record (id, name,
-// artwork, types) for all 151 Pokémon — enough for the grid, search, and
+// artwork, types) for all 251 Pokémon — enough for the grid, search, and
 // type filter — and cache that list in localStorage. Full detail (stats,
 // abilities, moves, evolution chain) is only fetched when a Pokémon's
 // detail view is opened, then cached per-id so revisits are instant.
 
 const API_BASE = 'https://pokeapi.co/api/v2';
-const POKEMON_COUNT = 151;
+const POKEMON_COUNT = 251;
 const LIST_CACHE_KEY = 'pokedex-list-v1';
 const DETAIL_CACHE_PREFIX = 'pokedex-detail-v1-';
 const LEGACY_CACHE_KEY = 'pokedex-data-v3'; // old monolithic cache, no longer used
@@ -25,7 +25,7 @@ const VERSION_GROUP_ORDER = [
 ];
 
 const state = {
-  pokemonList: [], // lightweight records for all 151, filled in once loading finishes
+  pokemonList: [], // lightweight records for all 251, filled in once loading finishes
   detailCache: new Map(), // id -> full detail object, populated lazily per visit
   evolutionChainCache: new Map(), // chain URL -> in-flight/resolved parsed chain
   activeTypeFilter: null,
@@ -316,7 +316,8 @@ function renderTypeChips() {
     .join('');
 }
 
-// Types in first-seen order (Pokédex #1-151 doesn't cover every type).
+// Types in first-seen order (derived from whatever's actually in the data,
+// not a hardcoded canonical list).
 function uniqueTypesInOrder(list) {
   const seen = new Set();
   const order = [];
